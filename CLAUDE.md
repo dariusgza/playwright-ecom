@@ -4,15 +4,30 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a Playwright end-to-end testing project focused on e-commerce website automation. The project tests functionality on Takealot.com, including cart operations and wishlist features. It includes both custom e-commerce tests and example Playwright TodoMVC tests for reference.
+This is an enterprise-grade Playwright end-to-end testing project for e-commerce automation on Takealot.com. The framework implements dynamic product selection algorithms, comprehensive error handling, and page object patterns to create maintainable, robust automation tests. It features intelligent product analysis capabilities that replace hardcoded approaches with smart selection logic.
+
+## Architecture
+
+### Page Object Model Structure
+- **BasePage** (`pages/BasePage.ts`): Abstract base class with common page functionality
+- **TakealotHomePage** (`pages/TakealotHomePage.ts`): Homepage navigation and search
+- **SearchResultsPage** (`pages/SearchResultsPage.ts`): Product analysis and selection logic
+- **CartPage** (`pages/CartPage.ts`): Shopping cart verification
+- **WishlistPage** (`pages/WishlistPage.ts`): Wishlist functionality
+
+### Utility Classes
+- **PriceUtils** (`utils/PriceUtils.ts`): South African Rand price parsing and validation
+- **ProductUtils** (`utils/ProductUtils.ts`): Brand detection, product classification, refresh rate analysis
+- **ErrorHandler** (`utils/ErrorHandler.ts`): Retry mechanisms, fallback strategies, network resilience
 
 ## Common Commands
 
 ### Running Tests
 - Run all tests: `npx playwright test`
 - Run tests in headed mode: `npx playwright test --headed`
-- Run specific test file: `npx playwright test tests/ecom-scenario-tests.spec.ts`
-- Run a single test: `npx playwright test --grep "cart functionality"`
+- Run dynamic selection tests: `npx playwright test tests/dynamic-selection-tests.spec.ts`
+- Run original tests (fallback): `npx playwright test tests/ecom-scenario-tests.spec.ts`
+- Run single scenario: `npx playwright test --grep "Samsung TV"`
 - Show test report: `npx playwright show-report`
 
 ### Development
@@ -22,58 +37,106 @@ This is a Playwright end-to-end testing project focused on e-commerce website au
 
 ### Debugging
 - Run tests in debug mode: `npx playwright test --debug`
-- Run specific test in debug mode: `npx playwright test tests/test-1.spec.ts --debug`
+- Debug specific test: `npx playwright test tests/dynamic-selection-tests.spec.ts --debug`
 - Open trace viewer: `npx playwright show-trace`
 
 ## Test Structure
 
 ### Main Test Files
-- `tests/ecom-scenario-tests.spec.ts`: Basic e-commerce test with beforeEach hook for Takealot.com
-- `tests/test-1.spec.ts`: Comprehensive cart and wishlist functionality tests
-- `tests-examples/demo-todo-app.spec.ts`: Complete TodoMVC example test suite (reference only)
+- **`tests/dynamic-selection-tests.spec.ts`**: Production test suite with intelligent product selection
+  - Scenario 1: Samsung TV under R15,000 (dynamic cart functionality)
+  - Scenario 2: 120Hz+ monitor (dynamic wishlist functionality)
+  - Fallback test with graceful degradation
+- **`tests/ecom-scenario-tests.spec.ts`**: Basic test suite for reference
+- **`tests-examples/demo-todo-app.spec.ts`**: TodoMVC example (reference only)
 
-### Test Patterns
-- Tests use page object model patterns with locators
-- Common setup uses `test.beforeEach()` for navigation to base URLs
-- Tests include verification of elements visibility, text content, and counts
-- Extensive use of Playwright's auto-waiting capabilities
+### Key Features
+- **Dynamic Product Selection**: Intelligent algorithms replace hardcoded product names
+- **Price Analysis**: Parse ZAR currency formats and validate price limits
+- **Error Resilience**: Comprehensive retry mechanisms and fallback strategies
+- **Network Handling**: Graceful degradation for connectivity issues
+- **Multi-selector Strategies**: Robust element targeting with multiple fallback selectors
 
-### Key Testing Approaches
-- **Cart Testing**: Search for products → Add to cart → Verify cart contents and pricing
-- **Wishlist Testing**: Search for products → Add to wishlist → Verify wishlist contents
-- **Element Verification**: Uses combinations of `toBeVisible()`, `toContainText()`, `toHaveCount()`
+## Testing Approaches
+
+### Scenario 1: Samsung TV Cart Testing
+```typescript
+// Dynamic selection replaces hardcoded approach
+const selectedProduct = await searchResultsPage.findFirstSamsungTVWithinPrice(15000);
+await searchResultsPage.addProductToCart(selectedProduct.name);
+```
+
+### Scenario 2: High Refresh Rate Monitor Wishlist
+```typescript
+// Intelligent refresh rate analysis
+const selectedMonitor = await searchResultsPage.findFirstHighRefreshRateMonitor(120);
+await searchResultsPage.addProductToWishlist(selectedMonitor.name);
+```
+
+### Error Handling Patterns
+```typescript
+// Retry with exponential backoff
+await ErrorHandler.retryWithBackoff(operation, 3, 2000, 'description');
+
+// Safe operations with fallbacks
+await ErrorHandler.safeElementOperation(primary, fallback, timeout, 'description');
+```
 
 ## Configuration Details
 
 ### Playwright Config (`playwright.config.ts`)
 - Test directory: `./tests`
-- Runs tests in parallel by default (`fullyParallel: true`)
-- Configured for Chromium, Firefox, and WebKit browsers
-- HTML reporter enabled
-- Trace collection on first retry for debugging
-- CI-specific settings: 2 retries, single worker
+- Parallel execution: `fullyParallel: true`
+- Browser coverage: Chromium, Firefox, WebKit
+- Reporting: HTML with trace collection on retry
+- CI optimization: 2 retries, single worker
 
-### CI/CD
-- GitHub Actions workflow configured in `.github/workflows/playwright.yml`
-- Runs on push/PR to main/master branches
-- Uploads test reports as artifacts with 30-day retention
-- Uses Ubuntu latest with Node.js LTS
+### GitHub Actions
+- Automated testing on push/PR to main
+- Artifact retention: 30 days
+- Environment: Ubuntu LTS with Node.js
 
-## Development Notes
+## Advanced Features
 
-### Target Application
-- Primary testing target: https://www.takealot.com/
-- Tests handle cookie acceptance dialogs ("NOT NOW" button)
-- Search functionality tested with specific product queries ("65 tv", "120HZ Monitor")
-- Tests interact with specific product brands (Samsung, MSI)
+### Dynamic Product Analysis
+- **Brand Detection**: Case-insensitive Samsung identification
+- **Product Classification**: TV vs Monitor distinction
+- **Refresh Rate Extraction**: Regex patterns for Hz detection
+- **Price Parsing**: Multiple ZAR format support (R 10,499, From R 2,749)
 
-### Locator Strategies
-- Extensive use of `getByRole()` for accessibility-based selection
-- `getByLabel()` for form controls and buttons
-- `filter()` and `hasText()` for refined element selection
-- Test data IDs used in TodoMVC example (`getByTestId()`)
+### Selector Strategies
+```typescript
+// Multiple fallback selectors for reliability
+const productSelectors = [
+  'article[data-ref="product-item"]',     // Most specific
+  'article',                             // Semantic HTML
+  '[data-ref="product-item"]',           // Data attributes
+  '.product-item, .product-card'         // CSS classes
+];
+```
 
-### Test Data Management
-- Specific product names and prices hardcoded for Takealot tests
-- TodoMVC uses constants array for test data consistency
-- Price verification includes specific currency formatting (R 10,499)
+### Network Resilience
+- Connection timeout handling
+- DNS resolution retry
+- Exponential backoff for network errors
+- Graceful degradation patterns
+
+## Development Guidelines
+
+### Adding New Tests
+1. Extend `BasePage` for new page objects
+2. Use `ErrorHandler` utilities for robust operations
+3. Implement multiple selector strategies
+4. Add comprehensive logging for debugging
+
+### Error Handling Standards
+- Always provide fallback mechanisms
+- Use descriptive error messages
+- Implement timeout protection
+- Log retry attempts and failures
+
+### Product Selection Logic
+- Avoid hardcoded product names
+- Use utility classes for analysis
+- Implement comprehensive validation
+- Handle edge cases gracefully
