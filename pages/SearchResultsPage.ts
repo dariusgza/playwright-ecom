@@ -1,6 +1,7 @@
 import { Page, Locator } from '@playwright/test';
 import { BasePage } from './BasePage';
 import { PriceUtils, ProductUtils } from '../utils';
+import { ErrorHandler } from '../utils/ErrorHandler';
 
 /**
  * Page object for Takealot search results functionality
@@ -108,7 +109,7 @@ export class SearchResultsPage extends BasePage {
   }
 
   /**
-   * Get product name from a product container
+   * Get product name from a product container with comprehensive error handling
    * @param productContainer - The product container element
    */
   async getProductName(productContainer: Locator): Promise<string> {
@@ -121,26 +122,45 @@ export class SearchResultsPage extends BasePage {
       'a[href*="/product/"]'
     ];
     
-    for (const selector of nameSelectors) {
-      try {
-        const nameElement = productContainer.locator(selector).first();
-        const text = await nameElement.textContent({ timeout: 2000 });
-        if (text && text.trim().length > 0) {
-          return text.trim();
+    return await ErrorHandler.safeElementOperation(
+      async () => {
+        // Try each selector strategy with individual error handling
+        for (const selector of nameSelectors) {
+          try {
+            const nameElement = productContainer.locator(selector).first();
+            const text = await nameElement.textContent({ timeout: 2000 });
+            if (text && text.trim().length > 0) {
+              return text.trim();
+            }
+          } catch (error) {
+            // Log selector failure but continue to next strategy
+            console.debug(`Product name selector '${selector}' failed: ${error instanceof Error ? error.message : error}`);
+            continue;
+          }
         }
-      } catch {
-        continue;
-      }
-    }
-    
-    // Fallback: get all text content and try to extract product name
-    const allText = await productContainer.textContent() || '';
-    const lines = allText.split('\n').map(line => line.trim()).filter(line => line.length > 10);
-    return lines[0] || '';
+        
+        // If no specific selector worked, throw to trigger fallback
+        throw new Error('No product name selectors matched');
+      },
+      // Fallback: extract from all text content
+      async () => {
+        console.log('🔄 Using fallback product name extraction');
+        const allText = await productContainer.textContent({ timeout: 5000 }) || '';
+        const lines = allText.split('\n').map(line => line.trim()).filter(line => line.length > 10);
+        
+        if (lines.length === 0) {
+          throw new Error('No readable product name found in container text');
+        }
+        
+        return lines[0];
+      },
+      5000, // 5 second timeout
+      'product name extraction'
+    );
   }
 
   /**
-   * Get product price from a product container
+   * Get product price from a product container with robust error handling
    * @param productContainer - The product container element
    */
   async getProductPrice(productContainer: Locator): Promise<string> {
@@ -153,22 +173,58 @@ export class SearchResultsPage extends BasePage {
       'div:has-text("R ")'
     ];
     
-    for (const selector of priceSelectors) {
-      try {
-        const priceElement = productContainer.locator(selector).first();
-        const text = await priceElement.textContent({ timeout: 2000 });
-        if (text && text.includes('R')) {
-          return text.trim();
+    return await ErrorHandler.safeElementOperation(
+      async () => {
+        // Try each price selector with validation
+        for (const selector of priceSelectors) {
+          try {
+            const priceElement = productContainer.locator(selector).first();
+            const text = await priceElement.textContent({ timeout: 2000 });
+            
+            // Validate price text contains currency indicator
+            if (text && text.includes('R')) {
+              const trimmedPrice = text.trim();
+              
+              // Additional validation: ensure it looks like a valid price
+              if (/R\s*[\d,\s]+/.test(trimmedPrice)) {
+                return trimmedPrice;
+              }
+            }
+          } catch (error) {
+            console.debug(`Price selector '${selector}' failed: ${error instanceof Error ? error.message : error}`);
+            continue;
+          }
         }
-      } catch {
-        continue;
-      }
-    }
-    
-    // Fallback: look for any text containing 'R' followed by numbers
-    const allText = await productContainer.textContent() || '';
-    const priceMatch = allText.match(/R\s*[\d,\s]+/);
-    return priceMatch ? priceMatch[0].trim() : '';
+        
+        throw new Error('No price selectors found valid price data');
+      },
+      // Fallback: regex search in all container text
+      async () => {
+        console.log('🔄 Using fallback price extraction from container text');
+        const allText = await productContainer.textContent({ timeout: 5000 }) || '';
+        
+        // Enhanced regex patterns for price matching
+        const pricePatterns = [
+          /R\s*[\d,\s]+/g,           // Standard format: R 10,499
+          /From\s+R\s*[\d,\s]+/g,   // Range format: From R 2,749
+          /\bR[\d,\s]+/g            // Compact format: R10499
+        ];
+        
+        for (const pattern of pricePatterns) {
+          const matches = allText.match(pattern);
+          if (matches && matches.length > 0) {
+            // Return the first valid-looking price
+            const price = matches[0].trim();
+            console.log(`📍 Extracted price using pattern: ${price}`);
+            return price;
+          }
+        }
+        
+        throw new Error('No price information found in product container');
+      },
+      5000,
+      'product price extraction'
+    );
   }
 
   /**
@@ -196,41 +252,82 @@ export class SearchResultsPage extends BasePage {
   async findFirstSamsungTVWithinPrice(maxPrice: number): Promise<{ name: string; price: string } | null> {
     console.log(`Looking for Samsung TV under R${maxPrice}`);
     
-    // Get all available product containers for analysis
-    const productContainers = await this.getAllProductContainers();
-    console.log(`Found ${productContainers.length} product containers to analyze`);
-    
-    // Iterate through products in display order (assessment specifies "first item")
-    for (const container of productContainers) {
-      try {
-        // Extract product information for filtering
-        const name = await this.getProductName(container);
-        const price = await this.getProductPrice(container);
+    return await ErrorHandler.withNetworkResilience(
+      async () => {
+        // Get all available product containers for analysis
+        const productContainers = await this.getAllProductContainers();
+        console.log(`Found ${productContainers.length} product containers to analyze`);
         
-        console.log(`Checking product: ${name} - ${price}`);
-        
-        // Apply assessment criteria filters:
-        // 1. Samsung brand check
-        // 2. TV product type check  
-        // 3. Price limit check (≤ R15,000)
-        if (ProductUtils.isSamsungBrand(name) && 
-            ProductUtils.isTV(name) && 
-            PriceUtils.isPriceWithinLimit(price, maxPrice)) {
-          
-          console.log(`Found matching Samsung TV: ${name} at ${price}`);
-          // Return first product that meets ALL assessment criteria
-          return { name, price };
+        if (productContainers.length === 0) {
+          throw new Error('No product containers found on the page - search may have failed or page not loaded');
         }
-      } catch (error) {
-        console.log(`Error checking product:`, error);
-        // Continue to next product if current one fails analysis
-        continue;
-      }
-    }
-    
-    // No Samsung TV found that meets price and type criteria
-    console.log('No Samsung TV found within price limit');
-    return null;
+        
+        let productAnalysisErrors: string[] = [];
+        
+        // Iterate through products in display order
+        for (let i = 0; i < productContainers.length; i++) {
+          const container = productContainers[i];
+          
+          try {
+            // Extract product information with error handling
+            const name = await this.getProductName(container);
+            const price = await this.getProductPrice(container);
+            
+            console.log(`Checking product ${i + 1}/${productContainers.length}: ${name} - ${price}`);
+            
+            // Validate extracted data
+            ErrorHandler.validateData(
+              { name, price },
+              [
+                (data) => ({ 
+                  isValid: data.name && data.name.length > 0, 
+                  message: 'Product name is empty or invalid' 
+                }),
+                (data) => ({ 
+                  isValid: data.price && data.price.includes('R'), 
+                  message: 'Product price is missing or invalid format' 
+                })
+              ],
+              `Product ${i + 1} data`
+            );
+            
+            // Apply filtering criteria with detailed validation
+            const isSamsung = ProductUtils.isSamsungBrand(name);
+            const isTV = ProductUtils.isTV(name);
+            const withinPrice = PriceUtils.isPriceWithinLimit(price, maxPrice);
+            
+            console.log(`📊 Analysis: Samsung=${isSamsung}, TV=${isTV}, PriceOK=${withinPrice} (${price})`);
+            
+            if (isSamsung && isTV && withinPrice) {
+              console.log(`✅ Found matching Samsung TV: ${name} at ${price}`);
+              return { name, price };
+            }
+            
+            // Log why this product didn't match
+            if (!isSamsung) console.log(`❌ Not Samsung brand: ${name}`);
+            if (!isTV) console.log(`❌ Not a TV: ${name}`);
+            if (!withinPrice) console.log(`❌ Price too high: ${price} > R${maxPrice}`);
+            
+          } catch (error) {
+            const errorMsg = `Product ${i + 1} analysis failed: ${error instanceof Error ? error.message : error}`;
+            console.warn(`⚠️ ${errorMsg}`);
+            productAnalysisErrors.push(errorMsg);
+            continue;
+          }
+        }
+        
+        // Log analysis summary
+        if (productAnalysisErrors.length > 0) {
+          console.warn(`⚠️ ${productAnalysisErrors.length}/${productContainers.length} products had analysis errors`);
+        }
+        
+        // No matching Samsung TV found
+        console.log('❌ No Samsung TV found within price limit after analyzing all products');
+        return null;
+      },
+      true, // Enable network resilience
+      'Samsung TV search operation'
+    );
   }
 
   /**
@@ -257,39 +354,87 @@ export class SearchResultsPage extends BasePage {
   async findFirstHighRefreshRateMonitor(minRefreshRate: number): Promise<{ name: string; price: string } | null> {
     console.log(`Looking for monitor with ${minRefreshRate}Hz or higher`);
     
-    // Get all available product containers for analysis
-    const productContainers = await this.getAllProductContainers();
-    console.log(`Found ${productContainers.length} product containers to analyze`);
-    
-    // Iterate through products in display order
-    for (const container of productContainers) {
-      try {
-        // Extract product information for filtering
-        const name = await this.getProductName(container);
-        const price = await this.getProductPrice(container);
+    return await ErrorHandler.withNetworkResilience(
+      async () => {
+        // Get all available product containers for analysis
+        const productContainers = await this.getAllProductContainers();
+        console.log(`Found ${productContainers.length} product containers to analyze`);
         
-        console.log(`Checking product: ${name} - ${price}`);
-        
-        // Apply assessment criteria filters:
-        // 1. Monitor product type check
-        // 2. Refresh rate requirement check (≥ 120Hz)
-        if (ProductUtils.isMonitor(name) && 
-            ProductUtils.meetsRefreshRateRequirement(name, minRefreshRate)) {
-          
-          console.log(`Found matching monitor: ${name} at ${price}`);
-          // Return first monitor that meets ALL assessment criteria
-          return { name, price };
+        if (productContainers.length === 0) {
+          throw new Error('No product containers found on the page - search may have failed or page not loaded');
         }
-      } catch (error) {
-        console.log(`Error checking product:`, error);
-        // Continue to next product if current one fails analysis
-        continue;
-      }
-    }
-    
-    // No monitor found that meets refresh rate and type criteria
-    console.log(`No monitor found with ${minRefreshRate}Hz or higher`);
-    return null;
+        
+        let productAnalysisErrors: string[] = [];
+        
+        // Iterate through products in display order
+        for (let i = 0; i < productContainers.length; i++) {
+          const container = productContainers[i];
+          
+          try {
+            // Extract product information with error handling
+            const name = await this.getProductName(container);
+            const price = await this.getProductPrice(container);
+            
+            console.log(`Checking product ${i + 1}/${productContainers.length}: ${name} - ${price}`);
+            
+            // Validate extracted data
+            ErrorHandler.validateData(
+              { name, price },
+              [
+                (data) => ({ 
+                  isValid: data.name && data.name.length > 0, 
+                  message: 'Product name is empty or invalid' 
+                }),
+                (data) => ({ 
+                  isValid: data.price && data.price.includes('R'), 
+                  message: 'Product price is missing or invalid format' 
+                })
+              ],
+              `Product ${i + 1} data`
+            );
+            
+            // Apply filtering criteria with detailed validation
+            const isMonitor = ProductUtils.isMonitor(name);
+            const meetsRefreshRate = ProductUtils.meetsRefreshRateRequirement(name, minRefreshRate);
+            const extractedHz = ProductUtils.extractRefreshRate(name);
+            
+            console.log(`📊 Analysis: Monitor=${isMonitor}, RefreshRate=${extractedHz}Hz (Required: ${minRefreshRate}Hz+), Meets=${meetsRefreshRate}`);
+            
+            if (isMonitor && meetsRefreshRate) {
+              console.log(`✅ Found matching monitor: ${name} at ${price} (${extractedHz}Hz)`);
+              return { name, price };
+            }
+            
+            // Log why this product didn't match
+            if (!isMonitor) console.log(`❌ Not a monitor: ${name}`);
+            if (!meetsRefreshRate) {
+              if (extractedHz === null) {
+                console.log(`❌ No refresh rate found in: ${name}`);
+              } else {
+                console.log(`❌ Refresh rate too low: ${extractedHz}Hz < ${minRefreshRate}Hz required`);
+              }
+            }
+            
+          } catch (error) {
+            const errorMsg = `Product ${i + 1} analysis failed: ${error instanceof Error ? error.message : error}`;
+            console.warn(`⚠️ ${errorMsg}`);
+            productAnalysisErrors.push(errorMsg);
+            continue;
+          }
+        }
+        
+        // Log analysis summary
+        if (productAnalysisErrors.length > 0) {
+          console.warn(`⚠️ ${productAnalysisErrors.length}/${productContainers.length} products had analysis errors`);
+        }
+        
+        // No matching monitor found
+        console.log(`❌ No monitor found with ${minRefreshRate}Hz or higher refresh rate after analyzing all products`);
+        return null;
+      },
+      true, // Enable network resilience
+      'High refresh rate monitor search operation'
+    );
   }
 
   /**
