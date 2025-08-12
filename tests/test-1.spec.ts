@@ -1,60 +1,51 @@
 import { test, expect } from '@playwright/test';
+import { TakealotHomePage, SearchResultsPage, CartPage, WishlistPage } from '../pages';
 
 test('Verify cart functionality', async ({ page }) => {
-  await page.goto('https://www.takealot.com/');
-  await page.getByRole('textbox', { name: 'Search for products, brands...' }).click();
-  await page.getByRole('button', { name: 'NOT NOW' }).click();
-  await page.getByRole('textbox', { name: 'Search for products, brands...' }).click();
-  await page.getByRole('textbox', { name: 'Search for products, brands...' }).fill('65 tv');
-  await page.getByRole('textbox', { name: 'Search for products, brands...' }).press('Enter');
-  await page.locator('label').filter({ hasText: 'Samsung72' }).click();
-  await page.getByLabel('Samsung 65" DU7010 4K UHD').getByRole('button', { name: 'Add to Cart' }).click();
-  await page.getByRole('link', { name: 'Go to Cart' }).click();
+  // Initialize page objects
+  const homePage = new TakealotHomePage(page);
+  const searchResultsPage = new SearchResultsPage(page);
+  const cartPage = new CartPage(page);
 
-  // Verify the item appears in the cart
-  const cartItem = page.locator('a').filter({ hasText: 'Samsung 65" DU7010 4K UHD' });
-  await expect(cartItem).toBeVisible();
+  // Navigate to Takealot and dismiss notifications
+  await homePage.navigate();
+  await homePage.dismissNotifications();
 
-  // Verify the correct item is in the cart
-  await expect(cartItem).toContainText('Samsung 65" DU7010 4K UHD');
+  // Search for 65" TV
+  await homePage.searchForProduct('65 tv');
 
-  // Verify the price is correct
-  const cartItemPrice = page.getByLabel('Shipped from Takealot').getByText('R 10,499');
-  await expect(cartItemPrice).toBeVisible();
+  // Filter results by Samsung brand
+  await searchResultsPage.filterBySamsung();
 
-  // Verify the quantity is correct
-  await expect(cartItem).toHaveCount(1);
+  // Add the specific Samsung product to cart
+  await searchResultsPage.addSamsungProductToCart('Samsung 65" DU7010 4K UHD');
 
-  // Verify the total price in the cart
-  const totalPrice = page.getByRole('complementary').getByText('R 10,499');
-  await expect(totalPrice).toBeVisible();
+  // Navigate to cart
+  await homePage.goToCart();
+
+  // Verify the item appears in cart with correct details
+  await cartPage.verifyItemInCart('Samsung 65" DU7010 4K UHD', 'R 10,499');
 });
 
 test('Verify the wishlist functionality', async ({ page }) => {
-  await page.goto('https://www.takealot.com/');
-  await page.getByRole('textbox', { name: 'Search for products, brands...' }).click();
-  await page.getByRole('button', { name: 'NOT NOW' }).click();
-  await page.getByRole('textbox', { name: 'Search for products, brands...' }).click();
-  await page.getByRole('textbox', { name: 'Search for products, brands...' }).fill('120HZ Monitor');
-  await page.getByRole('textbox', { name: 'Search for products, brands...' }).press('Enter');
-  await page.getByRole('article', { name: 'MSI PERFECTEDGE PRO 25" FHD' }).getByLabel('Add to wishlist').click();
-  await page.getByRole('link', { name: 'wishlist' }).click();
+  // Initialize page objects
+  const homePage = new TakealotHomePage(page);
+  const searchResultsPage = new SearchResultsPage(page);
+  const wishlistPage = new WishlistPage(page);
 
-  // Verify the item appears in the wishlist
-  const wishlistItem = page.locator('a').filter({ hasText: 'MSI PERFECTEDGE PRO 25" FHD' });
-  await expect(wishlistItem).toBeVisible();
+  // Navigate to Takealot and dismiss notifications
+  await homePage.navigate();
+  await homePage.dismissNotifications();
 
-  // Verify the correct item is in the wishlist
-  await expect(wishlistItem).toContainText('MSI PERFECTEDGE PRO 25" FHD');
+  // Search for 120Hz Monitor
+  await homePage.searchForProduct('120HZ Monitor');
 
-  // Verify the price is correct
-  const wishlistItemPrice = page.getByLabel('Shipped from Takealot').getByText('R 10,499');
-  await expect(wishlistItemPrice).toBeVisible();
+  // Add the specific MSI monitor to wishlist
+  await searchResultsPage.addMonitorToWishlist('MSI PERFECTEDGE PRO 25" FHD');
 
-  // Verify the quantity is correct
-  await expect(wishlistItem).toHaveCount(1);
+  // Navigate to wishlist
+  await homePage.goToWishlist();
 
-  // Verify the total price in the wishlist
-  const totalPrice = page.getByRole('complementary').getByText('R 10,499');
-  await expect(totalPrice).toBeVisible();
+  // Verify the item appears in wishlist with correct details
+  await wishlistPage.verifyItemInWishlist('MSI PERFECTEDGE PRO 25" FHD', 'R 10,499');
 });
