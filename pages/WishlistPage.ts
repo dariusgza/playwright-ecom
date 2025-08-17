@@ -1,5 +1,6 @@
 import { Page, Locator, expect } from '@playwright/test';
 import { BasePage } from './BasePage';
+import { CommonPageHelpers } from '../utils/CommonPageHelpers';
 
 /**
  * Page object for Takealot wishlist functionality
@@ -14,7 +15,8 @@ export class WishlistPage extends BasePage {
    * @param productName - The name of the product to find in wishlist
    */
   getWishlistItem(productName: string): Locator {
-    return this.page.locator('a').filter({ hasText: productName });
+    const locators = CommonPageHelpers.createFlexibleProductLocator(this.page, productName, 'a');
+    return locators[0]; // Return first strategy as default
   }
 
   /**
@@ -22,7 +24,8 @@ export class WishlistPage extends BasePage {
    * @param priceText - The price text to find (e.g., 'R 10,499')
    */
   getWishlistItemPrice(priceText: string): Locator {
-    return this.page.getByLabel('Shipped from Takealot').getByText(priceText);
+    const priceLocators = CommonPageHelpers.createPriceLocators(this.page, priceText);
+    return priceLocators.shippedFromTakealot;
   }
 
   /**
@@ -30,7 +33,8 @@ export class WishlistPage extends BasePage {
    * @param priceText - The total price text to find
    */
   getTotalPrice(priceText: string): Locator {
-    return this.page.getByRole('complementary').getByText(priceText);
+    const priceLocators = CommonPageHelpers.createPriceLocators(this.page, priceText);
+    return priceLocators.complementarySection;
   }
 
   /**
@@ -39,7 +43,12 @@ export class WishlistPage extends BasePage {
    * @param expectedPrice - The expected price (optional for dynamic scenarios)
    */
   async verifyItemInWishlist(productName: string, expectedPrice?: string): Promise<void> {
-    const wishlistItem = this.getWishlistItem(productName);
+    const wishlistItem = await CommonPageHelpers.verifyItemWithFlexibleMatching(
+      this.page, 
+      productName, 
+      'a', 
+      expectedPrice
+    );
     
     // Verify the item appears in the wishlist
     await expect(wishlistItem).toBeVisible();
@@ -49,21 +58,6 @@ export class WishlistPage extends BasePage {
     
     // Verify the quantity is correct (should be 1 item)
     await expect(wishlistItem).toHaveCount(1);
-    
-    // Price verification is optional for dynamic product selection
-    if (expectedPrice) {
-      try {
-        const wishlistItemPrice = this.getWishlistItemPrice(expectedPrice);
-        await expect(wishlistItemPrice).toBeVisible();
-        
-        const totalPrice = this.getTotalPrice(expectedPrice);
-        await expect(totalPrice).toBeVisible();
-      } catch {
-        console.log(`Price verification skipped for ${productName} - price format may vary`);
-      }
-    } else {
-      console.log(`Price verification skipped for dynamically selected product: ${productName}`);
-    }
   }
 
   /**

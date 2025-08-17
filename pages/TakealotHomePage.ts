@@ -1,5 +1,6 @@
 import { Page, Locator } from '@playwright/test';
 import { BasePage } from './BasePage';
+import { CommonPageHelpers } from '../utils/CommonPageHelpers';
 
 /**
  * Page object for Takealot homepage functionality
@@ -26,17 +27,7 @@ export class TakealotHomePage extends BasePage {
   /**
    * Dismiss the cookie/notification dialog if present
    */
-  readonly dismissSelectors = [
-    'button:has-text("NOT NOW")',
-    'button:has-text("Accept")',
-    'button:has-text("Close")',
-    'button:has-text("Dismiss")',
-    '[aria-label*="Close"]',
-    '[aria-label*="Dismiss"]',
-    '.close-button',
-    '.cookie-accept',
-    '.cookie-dismiss'
-  ];
+  readonly dismissSelectors = CommonPageHelpers.getNotificationDismissalSelectors();
 
   async tryDismissNotification(selector: string): Promise<boolean> {
     try {

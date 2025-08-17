@@ -1,4 +1,5 @@
 import { Page, Locator } from '@playwright/test';
+import { CommonPageHelpers } from '../utils/CommonPageHelpers';
 
 /**
  * Base page class providing common functionality for all page objects
@@ -63,14 +64,7 @@ export class BasePage {
    * Dismiss common overlays that might block interactions
    */
   private async dismissOverlays(): Promise<void> {
-    const overlaySelectors = [
-      '.ab-page-blocker',
-      '.page-blocker', 
-      '.overlay-blocker',
-      '.cookies-banner-module_cookie-banner_hsodu',
-      '[role="dialog"]',
-      '.modal'
-    ];
+    const overlaySelectors = CommonPageHelpers.getOverlaySelectors();
     
     for (const selector of overlaySelectors) {
       try {
