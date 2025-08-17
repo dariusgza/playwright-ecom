@@ -5,11 +5,8 @@ import { ErrorHandler } from '../utils/ErrorHandler';
 /**
  * Test suite for dynamic product selection scenarios
  * 
- * ASSESSMENT COMPLIANCE IMPLEMENTATION
+ * IMPLEMENTATION
  * ===================================
- * 
- * This file implements the Senior Automation Tester Technical Assessment requirements
- * for Part 1: Coding & Automation Script, specifically:
  * 
  * Scenario 1: Samsung TV Cart Functionality
  * - Open e-commerce site (https://www.takealot.com/)
@@ -23,9 +20,8 @@ import { ErrorHandler } from '../utils/ErrorHandler';
  * - Add any 120Hz+ refresh rate Monitor to wishlist (DYNAMIC SELECTION)
  * - Verify item appears in wishlist with correct name and price
  * 
- * KEY ASSESSMENT FEATURES IMPLEMENTED:
+ * KEY FEATURES IMPLEMENTED:
  * - Page Object/Component-based design patterns ✅
- * - Comments explaining key steps ✅  
  * - Basic assertions ✅
  * - Dynamic product selection (NOT hardcoded product names) ✅
  * - Price parsing and validation logic ✅
@@ -35,12 +31,12 @@ import { ErrorHandler } from '../utils/ErrorHandler';
 test('Scenario 1: Find and add first Samsung TV under R15,000 to cart', async ({ page }) => {
   test.setTimeout(120000); // Increase timeout to 2 minutes
   /*
-   * ASSESSMENT SCENARIO 1 IMPLEMENTATION
+   * SCENARIO 1 IMPLEMENTATION
    * ====================================
-   * This test implements the exact requirements from the assessment:
+   * This test implements the exact requirements from the scenario:
    * "Add the first item in the filtered results that's price is not more than R15 000 to the cart"
    * 
-   * Key Assessment Compliance Points:
+   * Key Compliance Points:
    * - Uses page object pattern for better maintainability
    * - Implements DYNAMIC product selection (not hardcoded)
    * - Includes comprehensive assertions as required
