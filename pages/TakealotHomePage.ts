@@ -19,20 +19,65 @@ export class TakealotHomePage extends BasePage {
    */
   async navigate(): Promise<void> {
     await this.goto('https://www.takealot.com/');
+    // Wait for dynamic content to load
+    await this.page.waitForTimeout(3000);
   }
 
   /**
    * Dismiss the cookie/notification dialog if present
    */
   async dismissNotifications(): Promise<void> {
-    try {
-      await this.notNowButton.waitFor({ state: 'visible', timeout: 5000 });
-      await this.click(this.notNowButton);
-      // Wait a moment for any overlays to disappear
+    const dismissSelectors = [
+      'button:has-text("NOT NOW")',
+      'button:has-text("Accept")',
+      'button:has-text("Close")',
+      'button:has-text("Dismiss")',
+      '[aria-label*="Close"]',
+      '[aria-label*="Dismiss"]',
+      '.close-button',
+      '.cookie-accept',
+      '.cookie-dismiss'
+    ];
+    
+    // Try multiple times to dismiss overlays
+    for (let attempt = 0; attempt < 3; attempt++) {
+      console.log(`Dismissing notifications - attempt ${attempt + 1}`);
+      
+      for (const selector of dismissSelectors) {
+        try {
+          const element = this.page.locator(selector).first();
+          if (await element.isVisible({ timeout: 2000 })) {
+            await this.click(element);
+            console.log(`✅ Dismissed notification using selector: ${selector}`);
+            await this.page.waitForTimeout(1000);
+          }
+        } catch {
+          // Continue to next selector
+        }
+      }
+      
+      // Check for common overlay blockers and try to dismiss them
+      try {
+        const pageBlocker = this.page.locator('.ab-page-blocker, .page-blocker, .overlay-blocker').first();
+        if (await pageBlocker.isVisible({ timeout: 1000 })) {
+          console.log('⚠️ Page blocker detected, trying to dismiss parent modal');
+          const modal = this.page.locator('[role="dialog"], .modal, .popup').first();
+          if (await modal.isVisible({ timeout: 1000 })) {
+            const closeButton = modal.locator('button:has-text("Close"), button:has-text("×"), [aria-label*="Close"]').first();
+            if (await closeButton.isVisible({ timeout: 1000 })) {
+              await this.click(closeButton);
+              console.log('✅ Dismissed modal dialog');
+            }
+          }
+        }
+      } catch {
+        // Continue
+      }
+      
       await this.page.waitForTimeout(2000);
-    } catch {
-      // Notification dialog may not appear, continue
     }
+    
+    console.log('Finished dismissing notifications');
   }
 
   /**
@@ -41,10 +86,12 @@ export class TakealotHomePage extends BasePage {
    */
   async searchForProduct(searchTerm: string): Promise<void> {
     // Wait for search box to be available and not blocked by overlays
-    await this.searchBox.waitFor({ state: 'visible' });
+    await this.searchBox.waitFor({ state: 'visible', timeout: 10000 });
     await this.click(this.searchBox);
     await this.fill(this.searchBox, searchTerm);
     await this.searchBox.press('Enter');
+    // Wait for search results to load
+    await this.page.waitForTimeout(3000);
   }
 
   /**

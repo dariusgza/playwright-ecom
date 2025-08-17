@@ -24,15 +24,17 @@ export class PriceUtils {
     // Input validation - return null for empty/undefined strings
     if (!priceText) return null;
     
-    // Multi-step cleaning process to handle various Takealot price formats
-    // Step 1: Remove 'R' currency symbol and any following spaces
-    // Step 2: Remove all commas and remaining spaces for clean numeric string
-    // Step 3: Trim any leading/trailing whitespace
-    const cleanPrice = priceText
-      .replace(/R\s*/g, '') // Remove R and any following spaces
-      .replace(/[,\s]/g, '') // Remove commas and spaces
-      .replace(/[^\d.]/g, '') // Remove any non-numeric characters except decimal points
-      .trim();
+    // Use regex to extract the first price pattern from the text
+    // Matches patterns like: R 15,999, R15,999, From R 2,749, etc.
+    const pricePattern = /R\s*([\d,]+(?:\.\d{2})?)/i;
+    const match = priceText.match(pricePattern);
+    
+    if (!match || !match[1]) {
+      return null;
+    }
+    
+    // Clean the extracted price by removing commas
+    const cleanPrice = match[1].replace(/,/g, '');
     
     // Convert cleaned string to numeric value
     const numericValue = parseFloat(cleanPrice);

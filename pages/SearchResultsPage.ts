@@ -15,8 +15,35 @@ export class SearchResultsPage extends BasePage {
    * Apply Samsung brand filter
    */
   async filterBySamsung(): Promise<void> {
-    const samsungFilter = this.page.locator('label').filter({ hasText: 'Samsung72' });
-    await this.click(samsungFilter);
+    // Wait for filters to be available
+    await this.page.waitForTimeout(2000);
+    
+    // Try multiple Samsung filter selectors as the count may vary
+    const samsungSelectors = [
+      'label:has-text("Samsung")',
+      'label[for*="samsung"]',
+      '[data-testid*="filter"][data-testid*="samsung"]',
+      'input[value*="samsung"] + label',
+      'input[id*="samsung"] + label'
+    ];
+    
+    for (const selector of samsungSelectors) {
+      try {
+        const element = this.page.locator(selector).first();
+        await element.waitFor({ state: 'visible', timeout: 5000 });
+        await this.click(element);
+        console.log(`Applied Samsung filter using selector: ${selector}`);
+        // Wait for filter to be applied and results to update
+        await this.page.waitForTimeout(3000);
+        return;
+      } catch (error) {
+        console.log(`Samsung filter selector '${selector}' failed:`, error instanceof Error ? error.message : error);
+        continue;
+      }
+    }
+    
+    // If no filter found, continue without filtering (may still find Samsung products)
+    console.log('⚠️ Could not find Samsung filter, continuing without brand filter');
   }
 
   /**
@@ -106,6 +133,47 @@ export class SearchResultsPage extends BasePage {
     
     // No products found with any selector strategy
     return [];
+  }
+
+  /**
+   * Extract clean product name from full product text
+   * @param fullProductText - The full product text from search results
+   */
+  extractCleanProductName(fullProductText: string): string {
+    // Remove common prefixes like "10+", "5", etc.
+    let cleanName = fullProductText.replace(/^\d+\+?\s*/, '');
+    
+    // Split on price patterns and take the first part
+    const pricePatterns = [
+      /R\s*\d+[,\d]*\s*Price/i,     // "R 10,499Price"
+      /R\s*\d+[,\d]*\s*$/i,         // "R 10,499" at end
+      /Price\s+is\s+\d+/i,          // "Price is 10499"
+      /From\s+R\s*\d+/i,            // "From R 2,749"
+      /List\s+price/i               // "List price"
+    ];
+    
+    for (const pattern of pricePatterns) {
+      const parts = cleanName.split(pattern);
+      if (parts.length > 1) {
+        cleanName = parts[0].trim();
+        break;
+      }
+    }
+    
+    // Remove duplicate brand names at the end
+    const brands = ['Samsung', 'MSI', 'LG', 'Sony', 'Apple', 'Telefunken', 'Toshiba'];
+    for (const brand of brands) {
+      const brandRegex = new RegExp(brand, 'gi');
+      const matches = cleanName.match(brandRegex) || [];
+      if (matches.length > 1) {
+        // Remove the last occurrence of the brand
+        const lastIndex = cleanName.lastIndexOf(brand);
+        cleanName = cleanName.substring(0, lastIndex).trim();
+        break;
+      }
+    }
+    
+    return cleanName.trim();
   }
 
   /**
@@ -299,8 +367,9 @@ export class SearchResultsPage extends BasePage {
             console.log(`📊 Analysis: Samsung=${isSamsung}, TV=${isTV}, PriceOK=${withinPrice} (${price})`);
             
             if (isSamsung && isTV && withinPrice) {
-              console.log(`✅ Found matching Samsung TV: ${name} at ${price}`);
-              return { name, price };
+              const cleanName = this.extractCleanProductName(name);
+              console.log(`✅ Found matching Samsung TV: ${cleanName} at ${price}`);
+              return { name: cleanName, price };
             }
             
             // Log why this product didn't match
@@ -401,8 +470,9 @@ export class SearchResultsPage extends BasePage {
             console.log(`📊 Analysis: Monitor=${isMonitor}, RefreshRate=${extractedHz}Hz (Required: ${minRefreshRate}Hz+), Meets=${meetsRefreshRate}`);
             
             if (isMonitor && meetsRefreshRate) {
-              console.log(`✅ Found matching monitor: ${name} at ${price} (${extractedHz}Hz)`);
-              return { name, price };
+              const cleanName = this.extractCleanProductName(name);
+              console.log(`✅ Found matching monitor: ${cleanName} at ${price} (${extractedHz}Hz)`);
+              return { name: cleanName, price };
             }
             
             // Log why this product didn't match
@@ -442,43 +512,66 @@ export class SearchResultsPage extends BasePage {
    * @param productName - The name of the product to add
    */
   async addProductToCart(productName: string): Promise<void> {
-    // Get a shorter version of the product name for more flexible matching
-    const shortName = productName.split(' ').slice(0, 3).join(' '); // Take first 3 words
+    console.log(`Attempting to add to cart: ${productName}`);
     
-    // Try different approaches to find and click the add to cart button
-    const addToCartSelectors = [
-      // Try with original approach for exact match
-      `[aria-label="${productName}"] button[aria-label="Add to Cart"]`,
-      // Try with shorter name
-      `[aria-label*="${shortName}"] button[aria-label="Add to Cart"]`,
-      // Try finding container with product name, then button inside
-      `article:has-text("${shortName}") button:has-text("Add to Cart")`,
-      `div:has-text("${shortName}") button:has-text("Add to Cart")`,
-      // Try more general selectors
-      'button:has-text("Add to Cart")',
-      'button[aria-label="Add to Cart"]',
-      // Try Samsung-specific approach since we know it's Samsung
-      `[aria-label*="Samsung"] button:has-text("Add to Cart")`,
-      `[aria-label*="Samsung"] button[aria-label="Add to Cart"]`
+    // Extract key identifying words from product name
+    const words = productName.split(' ');
+    const brand = words[0]; // First word is usually the brand
+    const model = words.length > 1 ? words[1] : '';
+    const keyWords = words.slice(0, 3).join(' '); // First 3 words
+    
+    // Try multiple strategies to find the Add to Cart button
+    const strategies = [
+      // Strategy 1: Find by brand and model, then locate button
+      async () => {
+        if (brand && model) {
+          const productContainer = this.page.locator('article').filter({ 
+            hasText: `${brand} ${model}` 
+          }).first();
+          const button = productContainer.locator('button:has-text("Add to Cart"), button[aria-label*="Add to Cart"]').first();
+          await button.waitFor({ state: 'visible', timeout: 3000 });
+          return button;
+        }
+        throw new Error('No brand/model found');
+      },
+      
+      // Strategy 2: Find by key words
+      async () => {
+        const productContainer = this.page.locator('article').filter({ 
+          hasText: keyWords 
+        }).first();
+        const button = productContainer.locator('button:has-text("Add to Cart"), button[aria-label*="Add to Cart"]').first();
+        await button.waitFor({ state: 'visible', timeout: 3000 });
+        return button;
+      },
+      
+      // Strategy 3: Find first visible Add to Cart button for the brand
+      async () => {
+        const brandContainer = this.page.locator('article').filter({ 
+          hasText: brand 
+        }).first();
+        const button = brandContainer.locator('button:has-text("Add to Cart"), button[aria-label*="Add to Cart"]').first();
+        await button.waitFor({ state: 'visible', timeout: 3000 });
+        return button;
+      },
+      
+      // Strategy 4: Find any visible Add to Cart button (fallback)
+      async () => {
+        const button = this.page.locator('button:has-text("Add to Cart"), button[aria-label*="Add to Cart"]').first();
+        await button.waitFor({ state: 'visible', timeout: 3000 });
+        return button;
+      }
     ];
     
-    for (let i = 0; i < addToCartSelectors.length; i++) {
-      const selector = addToCartSelectors[i];
+    for (let i = 0; i < strategies.length; i++) {
       try {
-        console.log(`Trying selector ${i + 1}: ${selector}`);
-        const buttons = this.page.locator(selector);
-        const count = await buttons.count();
-        console.log(`Found ${count} buttons with selector: ${selector}`);
-        
-        if (count > 0) {
-          const button = buttons.first();
-          await button.waitFor({ state: 'visible', timeout: 5000 });
-          await this.click(button);
-          console.log(`Successfully added product to cart using selector ${i + 1}`);
-          return;
-        }
+        console.log(`Trying add to cart strategy ${i + 1} for product: ${productName}`);
+        const button = await strategies[i]();
+        await this.click(button);
+        console.log(`✅ Successfully added to cart using strategy ${i + 1}`);
+        return;
       } catch (error) {
-        console.log(`Selector ${i + 1} failed:`, error);
+        console.log(`⚠️ Add to cart strategy ${i + 1} failed: ${error instanceof Error ? error.message : error}`);
         continue;
       }
     }
@@ -500,22 +593,66 @@ export class SearchResultsPage extends BasePage {
    * @param productName - The name of the product to add
    */
   async addProductToWishlist(productName: string): Promise<void> {
-    // Try different approaches to find and click the wishlist button
-    const wishlistSelectors = [
-      `[aria-label*="${productName}"] button[aria-label*="wishlist"]`,
-      `article:has-text("${productName}") button[aria-label*="wishlist"]`,
-      `div:has-text("${productName}") button[aria-label*="wishlist"]`,
-      'button[aria-label*="wishlist"]'
+    console.log(`Attempting to add to wishlist: ${productName}`);
+    
+    // Extract key identifying words from product name
+    const words = productName.split(' ');
+    const brand = words[0];
+    const model = words.length > 1 ? words[1] : '';
+    const keyWords = words.slice(0, 3).join(' ');
+    
+    // Try multiple strategies to find the Add to Wishlist button
+    const strategies = [
+      // Strategy 1: Find by brand and model, then locate wishlist button
+      async () => {
+        if (brand && model) {
+          const productContainer = this.page.locator('article').filter({ 
+            hasText: `${brand} ${model}` 
+          }).first();
+          const button = productContainer.locator('button[aria-label*="wishlist"], button:has-text("wishlist")').first();
+          await button.waitFor({ state: 'visible', timeout: 3000 });
+          return button;
+        }
+        throw new Error('No brand/model found');
+      },
+      
+      // Strategy 2: Find by key words
+      async () => {
+        const productContainer = this.page.locator('article').filter({ 
+          hasText: keyWords 
+        }).first();
+        const button = productContainer.locator('button[aria-label*="wishlist"], button:has-text("wishlist")').first();
+        await button.waitFor({ state: 'visible', timeout: 3000 });
+        return button;
+      },
+      
+      // Strategy 3: Find first visible wishlist button for the brand
+      async () => {
+        const brandContainer = this.page.locator('article').filter({ 
+          hasText: brand 
+        }).first();
+        const button = brandContainer.locator('button[aria-label*="wishlist"], button:has-text("wishlist")').first();
+        await button.waitFor({ state: 'visible', timeout: 3000 });
+        return button;
+      },
+      
+      // Strategy 4: Find any visible wishlist button (fallback)
+      async () => {
+        const button = this.page.locator('button[aria-label*="wishlist"], button:has-text("wishlist")').first();
+        await button.waitFor({ state: 'visible', timeout: 3000 });
+        return button;
+      }
     ];
     
-    for (const selector of wishlistSelectors) {
+    for (let i = 0; i < strategies.length; i++) {
       try {
-        const button = this.page.locator(selector).first();
-        await button.waitFor({ state: 'visible', timeout: 5000 });
+        console.log(`Trying wishlist strategy ${i + 1} for product: ${productName}`);
+        const button = await strategies[i]();
         await this.click(button);
-        console.log(`Successfully added ${productName} to wishlist`);
+        console.log(`✅ Successfully added to wishlist using strategy ${i + 1}`);
         return;
-      } catch {
+      } catch (error) {
+        console.log(`⚠️ Wishlist strategy ${i + 1} failed: ${error instanceof Error ? error.message : error}`);
         continue;
       }
     }

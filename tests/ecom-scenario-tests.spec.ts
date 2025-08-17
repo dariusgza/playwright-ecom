@@ -23,6 +23,9 @@ test('Verify cart functionality', async ({ page }) => {
   // Navigate to cart
   await homePage.goToCart();
 
+  // Wait for cart page to load completely
+  await page.waitForLoadState('networkidle');
+
   // Verify the item appears in cart with correct details
   await cartPage.verifyItemInCart('Samsung 65" DU7010 4K UHD', 'R 10,499');
 });

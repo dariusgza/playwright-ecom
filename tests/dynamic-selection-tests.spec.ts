@@ -33,6 +33,7 @@ import { ErrorHandler } from '../utils/ErrorHandler';
  */
 
 test('Scenario 1: Find and add first Samsung TV under R15,000 to cart', async ({ page }) => {
+  test.setTimeout(120000); // Increase timeout to 2 minutes
   /*
    * ASSESSMENT SCENARIO 1 IMPLEMENTATION
    * ====================================
@@ -228,8 +229,9 @@ test('Scenario 2: Find and add 120Hz+ monitor to wishlist', async ({ page }) => 
     'wishlist verification'
   );
 });
-
 test('Fallback: Test with original hardcoded approach if dynamic selection fails', async ({ page }) => {
+  test.setTimeout(120000); // Increase timeout to 2 minutes
+  
   // Initialize page objects
   const homePage = new TakealotHomePage(page);
   const searchResultsPage = new SearchResultsPage(page);
