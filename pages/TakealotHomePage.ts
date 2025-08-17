@@ -26,54 +26,63 @@ export class TakealotHomePage extends BasePage {
   /**
    * Dismiss the cookie/notification dialog if present
    */
+  readonly dismissSelectors = [
+    'button:has-text("NOT NOW")',
+    'button:has-text("Accept")',
+    'button:has-text("Close")',
+    'button:has-text("Dismiss")',
+    '[aria-label*="Close"]',
+    '[aria-label*="Dismiss"]',
+    '.close-button',
+    '.cookie-accept',
+    '.cookie-dismiss'
+  ];
+
+  async tryDismissNotification(selector: string): Promise<boolean> {
+    try {
+      const element = this.page.locator(selector).first();
+      if (await element.isVisible({ timeout: 2000 })) {
+        await this.click(element);
+        console.log(`✅ Dismissed notification using selector: ${selector}`);
+        await this.page.waitForTimeout(1000);
+        return true;
+      }
+    } catch {
+      // Continue to next selector
+    }
+    return false;
+  }
+
+  async tryDismissModal(): Promise<boolean> {
+    try {
+      const pageBlocker = this.page.locator('.ab-page-blocker, .page-blocker, .overlay-blocker').first();
+      if (await pageBlocker.isVisible({ timeout: 1000 })) {
+        console.log('⚠️ Page blocker detected, trying to dismiss parent modal');
+        const modal = this.page.locator('[role="dialog"], .modal, .popup').first();
+        if (await modal.isVisible({ timeout: 1000 })) {
+          const closeButton = modal.locator('button:has-text("Close"), button:has-text("×"), [aria-label*="Close"]').first();
+          if (await closeButton.isVisible({ timeout: 1000 })) {
+            await this.click(closeButton);
+            console.log('✅ Dismissed modal dialog');
+            return true;
+          }
+        }
+      }
+    } catch {
+      // Continue
+    }
+    return false;
+  }
+
   async dismissNotifications(): Promise<void> {
-    const dismissSelectors = [
-      'button:has-text("NOT NOW")',
-      'button:has-text("Accept")',
-      'button:has-text("Close")',
-      'button:has-text("Dismiss")',
-      '[aria-label*="Close"]',
-      '[aria-label*="Dismiss"]',
-      '.close-button',
-      '.cookie-accept',
-      '.cookie-dismiss'
-    ];
-    
-    // Try multiple times to dismiss overlays
     for (let attempt = 0; attempt < 3; attempt++) {
       console.log(`Dismissing notifications - attempt ${attempt + 1}`);
       
-      for (const selector of dismissSelectors) {
-        try {
-          const element = this.page.locator(selector).first();
-          if (await element.isVisible({ timeout: 2000 })) {
-            await this.click(element);
-            console.log(`✅ Dismissed notification using selector: ${selector}`);
-            await this.page.waitForTimeout(1000);
-          }
-        } catch {
-          // Continue to next selector
-        }
+      for (const selector of this.dismissSelectors) {
+        await this.tryDismissNotification(selector);
       }
       
-      // Check for common overlay blockers and try to dismiss them
-      try {
-        const pageBlocker = this.page.locator('.ab-page-blocker, .page-blocker, .overlay-blocker').first();
-        if (await pageBlocker.isVisible({ timeout: 1000 })) {
-          console.log('⚠️ Page blocker detected, trying to dismiss parent modal');
-          const modal = this.page.locator('[role="dialog"], .modal, .popup').first();
-          if (await modal.isVisible({ timeout: 1000 })) {
-            const closeButton = modal.locator('button:has-text("Close"), button:has-text("×"), [aria-label*="Close"]').first();
-            if (await closeButton.isVisible({ timeout: 1000 })) {
-              await this.click(closeButton);
-              console.log('✅ Dismissed modal dialog');
-            }
-          }
-        }
-      } catch {
-        // Continue
-      }
-      
+      await this.tryDismissModal();
       await this.page.waitForTimeout(2000);
     }
     

@@ -1,5 +1,12 @@
-import { test, expect } from '@playwright/test';
+import { test } from '@playwright/test';
 import { TakealotHomePage, SearchResultsPage, CartPage, WishlistPage } from '../pages';
+
+/*
+ * Test suite for e-commerce scenarios
+ * Includes tests for cart and wishlist functionalities
+ * Tests are designed to validate key user interactions
+ * Tests are written in a straightforward manner using Page Objects Model Design Pattern for better maintainability and readability
+ */
 
 test('Verify cart functionality', async ({ page }) => {
   // Initialize page objects
@@ -9,7 +16,7 @@ test('Verify cart functionality', async ({ page }) => {
 
   // Navigate to Takealot and dismiss notifications
   await homePage.navigate();
-  await homePage.dismissNotifications();
+  await homePage.tryDismissNotification('.notification-dialog');
 
   // Search for 65" TV
   await homePage.searchForProduct('65 tv');

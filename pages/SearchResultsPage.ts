@@ -250,7 +250,7 @@ export class SearchResultsPage extends BasePage {
             const text = await priceElement.textContent({ timeout: 2000 });
             
             // Validate price text contains currency indicator
-            if (text && text.includes('R')) {
+            if (text?.includes('R')) {
               const trimmedPrice = text.trim();
               
               // Additional validation: ensure it looks like a valid price
@@ -352,7 +352,7 @@ export class SearchResultsPage extends BasePage {
                   message: 'Product name is empty or invalid' 
                 }),
                 (data) => ({ 
-                  isValid: data.price && data.price.includes('R'), 
+                  isValid: data.price?.includes('R') ?? false, 
                   message: 'Product price is missing or invalid format' 
                 })
               ],
